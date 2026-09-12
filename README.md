@@ -4,7 +4,7 @@
 
 ![Unreal Engine](https://img.shields.io/badge/Unreal-5.6-informational?style=for-the-badge&labelColor=101418&color=9ccbfb)
 ![Language](https://img.shields.io/badge/C%2B%2B-20-informational?style=for-the-badge&labelColor=101418&color=b9c8da)
-![Tests](https://img.shields.io/badge/automation_tests-67-informational?style=for-the-badge&labelColor=101418&color=d3bfe6)
+![Tests](https://img.shields.io/badge/automation_tests-62-informational?style=for-the-badge&labelColor=101418&color=d3bfe6)
 ![Platform](https://img.shields.io/badge/platform-Win64-informational?style=for-the-badge&labelColor=101418&color=96f1f1)
 
 **English** · [Русский](README.ru.md)
