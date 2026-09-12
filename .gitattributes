@@ -1,0 +1,20 @@
+# Unreal assets are binary. Marking them explicitly stops Git from attempting
+# line-ending conversion or producing useless textual diffs on them.
+*.uasset  binary
+*.umap    binary
+*.upk     binary
+*.udk     binary
+
+# Keep source and config as text with normalised line endings, so the repo does
+# not churn between Windows and Linux checkouts.
+*.cpp     text eol=lf
+*.h       text eol=lf
+*.cs      text eol=lf
+*.ini     text eol=lf
+*.cfg     text eol=lf
+*.md      text eol=lf
+*.uproject text eol=lf
+
+# Windows-only scripts must keep CRLF or cmd.exe mis-parses them.
+*.bat     text eol=crlf
+*.ps1     text eol=crlf

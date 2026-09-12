@@ -1,0 +1,53 @@
+MIT License
+
+Copyright (c) 2026 K7oky
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+================================================================================
+SCOPE OF THIS LICENSE
+================================================================================
+
+The MIT grant above covers the original work in this repository: the Unreal
+Engine integration layer, the collision backends, the console and bind systems,
+the audio layer, the test suite, the build tooling and the documentation.
+
+It does NOT and cannot cover the following, which are not the copyright holder's
+to license:
+
+  Movement algorithms
+    The contents of Source/SourceMovement/Private/Core and the corresponding
+    headers are a port of Valve's CGameMovement and CCSGameMovement. The
+    algorithms, constants and behaviour are Valve's work. Every ported function
+    carries a file:line reference to its original so the provenance is explicit
+    rather than hidden. This repository is a study of that code; it is not an
+    original movement design and is not claimed as one.
+
+  Unreal Engine template content
+    Assets shipped with Unreal Engine templates remain under the Unreal Engine
+    EULA and are excluded from version control (see .gitignore).
+
+  Audio
+    The footstep, landing and wind sounds used during development are Valve
+    assets. They are NOT part of this repository and are excluded from version
+    control. Supply your own; see the Audio section of the README.
+
+If you intend to use this in a commercial product, assess the first item for
+yourself. Reproducing another engine's movement code carries obligations and
+risks that an MIT header on the surrounding glue does not remove.
