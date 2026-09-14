@@ -1,9 +1,6 @@
 # SOURCE MOVEMENT SPECIFICATION
 
-Reverse-engineering отчёт по movement/player-physics из `C:\Users\Nurgisa\Documents\Kisak-Strike-master`.
-
-**Status:** Phase 1 (archaeology) + Phase 2 (behavioral spec) + Phase 3 (architecture proposal).
-**Implementation:** не начата (ожидает подтверждения).
+Reverse-engineering отчёт по movement/player-physics из `Kisak-Strike-master`.
 
 Authoritative reference — только предоставленный код. Все утверждения ниже снабжены ссылками
 `file:line`. Там, где значение не выводится из кода, стоит маркер `UNKNOWN`.
