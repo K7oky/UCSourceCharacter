@@ -91,6 +91,9 @@ helpers is called.
 - Jump with stamina cost, ground-factor and the "ducked jumps overwrite vertical velocity" rule
 - Continuous CS:GO duck (`m_flDuckAmount`), crouch-jump, duck-spam penalty, unduck ceiling checks
 - Step up/down, `StayOnGround`, ground categorisation against the literal `normal.z >= 0.7`
+- Ladders: the CS dampen easing, the cliff-edge grab, and jumping off with `IGNORE_JUMP_TIME`
+- Water and slime: swimming, sinking, the hop out onto a ledge, and knee-deep wading
+- `CheckStuck` with Source's own 54-entry jitter table, in its original order
 
 **Systems around it**
 - Fixed 64 or 128 tick simulation, decoupled from frame rate
@@ -100,7 +103,7 @@ helpers is called.
 - Footsteps, jump and landing audio driven by physical materials ([assets not included](#audio))
 - Collision against ordinary Unreal colliders via Chaos, plus an analytic brush backend for tests
 
-**Not implemented** — see [Known gaps](#known-gaps): water, spectator, networking.
+**Not implemented** — see [Known gaps](#known-gaps): spectator, networking.
 
 ---
 
@@ -109,8 +112,8 @@ helpers is called.
 - **Unreal Engine 5.6** (Win64)
 - **Visual Studio 2022** with the *Game development with C++* workload
 - Optional, for reading the port against its source: a local checkout of
-  [Kisak-Strike](https://github.com/SwagSoftware/Kisak-Strike). Every ported function carries a
-  `file.cpp:line` reference into that tree — chiefly `game/shared/gamemovement.cpp` and
+  [Kisak-Strike](https://github.com/SwagSoftware/Kisak-Strike). The functions keep their original
+  names, so they are easy to find in `game/shared/gamemovement.cpp` and
   `game/shared/cstrike15/cs_gamemovement.cpp`.
 
 > [!NOTE]
@@ -173,7 +176,15 @@ exec surf
    **`SourceMovementGameModeBase`**. It spawns `ASourcePlayerPawn` automatically.
 3. Give the level geometry with collision that blocks the `Pawn` channel. Anything that blocks
    `ECC_Pawn` blocks the player — no special setup, no custom channel, no extra component.
-4. Press Play.
+4. Optional, for water, two separate things:
+   - Give the water surface `PM_Water` or `PM_Slime`, as the material's Phys Material or as a Phys
+     Material Override. That alone makes it non-solid, so the player falls through instead of
+     standing on it, the same way a ladder surface becomes climbable.
+   - For actually swimming, the water needs a **volume** carrying the same material, with **simple**
+     collision: a scaled cube works. Depth is a containment test, and an Unreal overlap cannot see
+     Complex-as-Simple meshes, so a bare surface plane has no inside to be in. Collision response
+     does not matter, water is not solid to the player either way.
+5. Press Play.
 
 That is the whole setup. `W A S D`, `SPACE`, `CTRL`, `SHIFT` and the mouse work immediately.
 
@@ -196,8 +207,8 @@ sv_cheats 1
 cl_showpos 2
 ```
 
-You now have a live readout of speed, ground state, wish direction, stamina, friction, trace counts
-and the ground normal with its slope angle.
+You now have a live readout of speed, ground state, wish direction, stamina, friction, trace counts,
+water level and the ground normal with its slope angle.
 
 ---
 
@@ -347,11 +358,17 @@ the assets at these paths and everything wires itself up with no editing; assets
 must be assigned manually.
 
 ```
-Content/sounds/player/footsteps/concrete/concrete_ct_01 … concrete_ct_17
-Content/sounds/player/land/concrete/land, land2, land3, land4
-Content/sounds/player/land/concrete/jump_launch_01
+Content/sounds/player/footsteps/concrete_ct_01 … concrete_ct_17
+Content/sounds/player/land/land, land2, land3, land4
+Content/sounds/player/land/jump_launch_01
 Content/sounds/player/surf/slow_wind_lp_a_02
+Content/sounds/player/ladder/wood/ladder_wood_01 … ladder_wood_14
+Content/sounds/player/ladder/metal/ladder_01 … ladder_12, without ladder_07
 ```
+
+The two ladder sets are pre-assigned to `SurfaceType2` and `SurfaceType3`, so a ladder plays its own
+material. `PM_Water` and `PM_Slime` have no clips yet: add entries for `SurfaceType4` and
+`SurfaceType5` and wading will use them instead of falling back to concrete.
 
 Unresolved soft paths are harmless — they load to null and the sound is skipped.
 
@@ -368,6 +385,8 @@ not generic ones:
 | Ducking | Volume × 0.65 |
 | Jump | Launch clip, plus a forced full-volume footstep above 126 u/s |
 | Landing | Only above **270 u/s** fall velocity, then a land clip plus a surface footstep |
+| Ladder | 200 ms interval, fixed volume 0.5, using the ladder's own material |
+| Wading | Knee deep: every fourth step, volume 0.65, 600 ms. Ankle deep: 0.2 walking / 0.5 running |
 
 The walk latch is **hysteretic**: pressing `SHIFT` at a full sprint does not silence footsteps instantly,
 the player stays audible until they decelerate to within 25 u/s of the walk cap. That is Source
@@ -567,13 +586,14 @@ They differ in exactly two places: `kz.cfg` keeps `sv_autobunnyhopping 0` for ma
 > pipeline converts to centimetres the map will be 2.54× too large relative to the player, and every
 > gap will be uncleanable while looking perfectly normal.
 >
-> Ladders are not implemented, so any KZ map with a required ladder climb cannot be finished.
+> Ladders need a physical material from `ClimbableSurfaces` on the ladder geometry, otherwise the
+> player walks straight past it. The two shipped ones are `PM_Ladder_wood` and `PM_Ladder_metal`.
 
 ---
 
 ## Importing CS2 maps
 
-No map assets ship with this repository -- the surf and KZ maps used during development belong to
+No map assets ship with this repository — the surf and KZ maps used during development belong to
 their Workshop authors and to Valve. The pipeline below is what they were brought in with, including
 the parts that are not obvious.
 
@@ -588,7 +608,7 @@ title, which is how to identify the numeric folders.
 Source2Viewer-CLI.exe -i "<id>_dir.vpk" -o "exported/" -d --gltf_export_materials
 ```
 
-Export as **`gltf`, not `glb`** -- GLB is capped at 2 GB by the spec and map exports do not fit.
+Export as **`gltf`, not `glb`** — GLB is capped at 2 GB by the spec and map exports do not fit.
 
 ### Scale
 
@@ -647,6 +667,9 @@ first thing to rule out when a seam appears to catch.
 Triggers, teleports, start and finish zones, and every other entity are game logic, not geometry.
 glTF carries none of it.
 
+Water is the case worth knowing about: a Source water brush is a volume, but the export keeps only
+its visible top face. Swimming needs that volume back, as a cube with `PM_Water` on it.
+
 ---
 
 ## Debugging
@@ -654,7 +677,7 @@ glTF carries none of it.
 | Command | Shows |
 |---|---|
 | `cl_showpos 1` | Speed, ground state, wish direction, ground normal + slope angle |
-| `cl_showpos 2` | Adds stamina, friction, trace count, collision planes |
+| `cl_showpos 2` | Adds stamina, friction, trace count, collision planes, water level |
 | `cl_sourcemove_drawhull 1` | The AABB the solver actually sweeps — not a mesh, the real hull |
 | `cl_sourcemove_drawtraces 1` | Sweeps that hit |
 | `cl_sourcemove_drawtraces 2` | Every sweep, including misses |
@@ -738,13 +761,12 @@ Stated plainly so nobody discovers these the hard way.
 
 | Gap | Status |
 |---|---|
-| **Networking / client-side prediction** | **Not implemented.** The structures are ready for it — pure simulation function, POD state, one command per tick — but there is no prediction, reconciliation or rollback |
-| Water (`CheckWater`, `WaterMove`, `WaterJump`) | Stub. Call sites exist and are marked `PHASE 7` |
+| **Networking / client-side prediction** | **Not implemented.** The structures are ready for it — pure simulation function, POD state, one command per tick, no RNG or wall-clock anywhere in the simulation, and entity ids that match across machines — but there is no prediction, reconciliation or rollback. Entity ids come from the saved actor name, so actors spawned at runtime still need a `FNetworkGUID` |
 | Spectator, toss move | Stub |
-| `CheckStuck` | Not ported (the 54-entry jitter table) |
+| Water splash and swim sounds | Not ported. Wading step sounds work; the entry splash and the underwater loop do not |
 | Moving platforms / `baseVelocity` | Not implemented |
 | Touch list | Not implemented |
-| Cross-mesh collision edges | The Chaos backend reconstructs one contact plane per sweep, where `CM_ClipBoxToBrush` takes the maximum over a whole brush. A sweep crossing between two separate collision meshes can pick up an edge normal. Mitigated in the backend, and removed entirely by merging geometry -- see [Importing CS2 maps](#importing-cs2-maps) |
+| Cross-mesh collision edges | The Chaos backend reconstructs one contact plane per sweep, where `CM_ClipBoxToBrush` takes the maximum over a whole brush. A sweep crossing between two separate collision meshes can pick up an edge normal. Mitigated in the backend, and removed entirely by merging geometry — see [Importing CS2 maps](#importing-cs2-maps) |
 | Surface properties table | Empty. Surfaces differ in **sound** but share friction and jump factor (`UNKNOWN-2`) |
 | Falling damage | Deferred — game rules, not movement |
 
@@ -766,7 +788,7 @@ When the code and the spec disagree, the **Source original wins**, and both get 
 ## License
 
 MIT, with one scope limit stated plainly in [LICENSE](LICENSE): the grant covers the original work
-here -- the Unreal integration, the collision backends, the console and bind systems, the audio
+here — the Unreal integration, the collision backends, the console and bind systems, the audio
 layer, the tests and the tooling. It does not cover the ported movement algorithms, which are
 Valve's, and it cannot, because they are not the copyright holder's to license.
 

@@ -73,7 +73,7 @@ public:
 protected:
 	void HandleMovementEvents(const struct FSourceMovementEvents& Events);
 
-	const FSourceSurfaceSounds& ResolveSounds(int32 SurfacePropsId) const;
+	const FSourceSurfaceSounds* FindSurfaceSounds(int32 SurfacePropsId) const;
 
 	USoundBase* PickRandom(const TArray<TSoftObjectPtr<USoundBase>>& Clips, int32& InOutLastIndex) const;
 
@@ -90,7 +90,7 @@ private:
 	UPROPERTY(Transient)
 	TObjectPtr<UAudioComponent> SurfWindAudio;
 
-	// One-shot latch for the "sound assets are missing" warning
+	// One-shot latch for the failed-to-load warning
 	mutable bool bWarnedMissingSounds = false;
 	int32 LastFootstepIndex = INDEX_NONE;
 	int32 LastLandIndex = INDEX_NONE;

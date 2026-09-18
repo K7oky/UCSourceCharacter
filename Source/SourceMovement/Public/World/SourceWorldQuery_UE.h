@@ -32,6 +32,9 @@ public:
 
 	void SetSurfaceProperties(int32 SurfacePropsId, srcfloat Friction, srcfloat JumpFactor = 1.f, srcfloat MaxSpeedFactor = 1.f, bool bClimbable = false);
 
+	// Water and slime surfaces stop being solid to the player, as in Source's MASK_PLAYERSOLID
+	void SetWaterSurface(int32 SurfacePropsId, int32 ContentsBit);
+
 	int32 GetQueryCount() const { return QueryCount; }
 	void ResetQueryCounter() { QueryCount = 0; }
 
@@ -44,20 +47,32 @@ private:
 		bool bClimbable = false;
 	};
 
-	// Degenerate (Start == End) sweep, routed to an overlap test
+	// Where a degenerate (Start == End) sweep goes
 	void TestHullOverlap(const FSrcVec3& At, const FSrcVec3& Mins, const FSrcVec3& Maxs, const FSourceTraceFilter& Filter, FSourceTraceResult& Out);
 
-	// Builds FSrcEntityRef from a hit actor and caches it for GetEntityAbsVelocity
+	// Also caches the actor, for GetEntityAbsVelocity
 	FSrcEntityRef MakeEntityRef(const AActor* Actor);
+
+	// Same id on every machine running the same map, which GetUniqueID is not
+	int32 ResolveEntityId(const AActor* Actor);
 
 	static int32 ResolveSurfacePropsId(const struct FHitResult& Hit);
 
-	// cl_sourcemove_drawtraces visualisation of a single sweep
+	int32 WaterContentsForSurface(int32 SurfacePropsId) const;
+
+	// For overlaps, which carry no per-face material to run through ResolveSurfacePropsId
+	int32 WaterContentsForComponent(const class UPrimitiveComponent* Component) const;
+
+	// cl_sourcemove_drawtraces
 	void DrawSweepDebug(const FSrcVec3& Start, const FSrcVec3& Mins, const FSrcVec3& Maxs, const FSourceTraceResult& Result) const;
 
 	TWeakObjectPtr<UWorld> World;
 	TWeakObjectPtr<AActor> IgnoreActor;
 	TMap<int32, FSurfaceProps> SurfacePropsTable;
+	TMap<int32, int32> WaterSurfaces;
 	TMap<int32, TWeakObjectPtr<const AActor>> EntityCache;
+
+	// GetUniqueID -> stable id, so the name hashing happens once per actor
+	TMap<uint32, int32> StableEntityIds;
 	int32 QueryCount = 0;
 };

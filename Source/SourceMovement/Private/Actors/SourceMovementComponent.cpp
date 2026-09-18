@@ -8,6 +8,7 @@
 
 #include "DrawDebugHelpers.h"
 #include "Engine/Engine.h"
+#include "GameFramework/Controller.h"
 #include "GameFramework/Pawn.h"
 #include "SourceMovementCVars.h"
 
@@ -23,6 +24,8 @@ void USourceMovementComponent::RebuildParams()
 {
 	Params = FSourceMovementParams();
 	Params.TickInterval = 1.0f / static_cast<srcfloat>(FMath::Max(1, TickRateHz));
+	Params.WaterSurfacePropsId = static_cast<int32>(WaterSurface.GetValue());
+	Params.SlimeSurfacePropsId = static_cast<int32>(SlimeSurface.GetValue());
 
 	SourceMovementCVars::ApplyToParams(Params);
 	SourceMovementCVars::ApplyToInputTranslator(Translator);
@@ -39,6 +42,15 @@ void USourceMovementComponent::InitializeWorldQuery()
 		UEQuery->bTraceComplex = bTraceComplex;
 
 		UEQuery->Initialize(GetWorld(), GetOwner());
+
+		for (const TEnumAsByte<EPhysicalSurface>& Surface : ClimbableSurfaces)
+		{
+			UEQuery->SetSurfaceProperties(static_cast<int32>(Surface.GetValue()), Params.DefaultSurfaceFriction, Params.DefaultSurfaceJumpFactor, Params.DefaultSurfaceMaxSpeedFactor, /*bClimbable=*/true);
+		}
+
+		UEQuery->SetWaterSurface(Params.WaterSurfacePropsId, SRC_CONTENTS_WATER);
+		UEQuery->SetWaterSurface(Params.SlimeSurfacePropsId, SRC_CONTENTS_SLIME);
+
 		WorldQuery = TUniquePtr<ISourceWorldQuery>(UEQuery);
 		return;
 	}
@@ -64,8 +76,9 @@ void USourceMovementComponent::BeginPlay()
 		State.Origin = SourceUnits::ToSrcPosition(UpdatedComponent->GetComponentLocation());
 		State.ViewAngles = SourceUnits::ToSrcAngles(UpdatedComponent->GetComponentRotation());
 		PendingInput.ViewAngles = State.ViewAngles;
+		LastStepViewAngles = State.ViewAngles;
 
-		// The authored rotation has been consumed into ViewAngles; the root itself stays axis-aligned
+		// Rotation now lives in ViewAngles, the root stays axis-aligned
 		UpdatedComponent->SetWorldRotation(FQuat::Identity);
 	}
 
@@ -78,7 +91,21 @@ void USourceMovementComponent::BeginPlay()
 	Accumulator = 0.f;
 	NextCommandNumber = 1;
 
+	BindInputOrdering();
+
 	PublishTransform();
+}
+
+void USourceMovementComponent::BindInputOrdering()
+{
+	// The controller reads the mouse in TG_PrePhysics too and Unreal does not order the two, so
+	// without this every step sees a frame-stale view angle and strafes feel heavy
+	APawn* Pawn = Cast<APawn>(GetOwner());
+	AController* Controller = Pawn ? Pawn->GetController() : nullptr;
+	if (Controller)
+	{
+		PrimaryComponentTick.AddPrerequisite(Controller, Controller->PrimaryActorTick);
+	}
 }
 
 void USourceMovementComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
@@ -100,7 +127,14 @@ void USourceMovementComponent::TickComponent(float DeltaTime, ELevelTick TickTyp
 	const float TickInterval = static_cast<float>(Params.TickInterval);
 	Accumulator += DeltaTime;
 
-	// Fixed 64 or 128 Hz steps, decoupled from frame rate, one usercmd each
+	// The mouse lands once per frame but a frame can be several ticks. Giving them all the same
+	// angle throws away the turn between them, which is most of what air-strafe gain is made of.
+	const int32 PlannedSteps = FMath::Min(FMath::FloorToInt(Accumulator / TickInterval), MaxStepsPerFrame);
+	const FSrcAngles FrameStartAngles = LastStepViewAngles;
+
+	FSrcAngles ViewDelta = PendingInput.ViewAngles - FrameStartAngles;
+	ViewDelta.y = SourceMath::AngleNormalize(ViewDelta.y);
+
 	int32 Steps = 0;
 	while (Accumulator >= TickInterval)
 	{
@@ -122,7 +156,16 @@ void USourceMovementComponent::TickComponent(float DeltaTime, ELevelTick TickTyp
 			InputProvider(PendingInput);
 		}
 
-		const FSourceUserCmd Cmd = Translator.Translate(PendingInput, NextCommandNumber, State.m_nTickBase);
+		FSourceInputState StepInput = PendingInput;
+		if (PlannedSteps > 1)
+		{
+			const srcfloat Alpha = static_cast<srcfloat>(Steps + 1) / static_cast<srcfloat>(PlannedSteps);
+			StepInput.ViewAngles.x = FrameStartAngles.x + ViewDelta.x * Alpha;
+			StepInput.ViewAngles.y = SourceMath::AngleNormalize(FrameStartAngles.y + ViewDelta.y * Alpha);
+			StepInput.ViewAngles.z = FrameStartAngles.z + ViewDelta.z * Alpha;
+		}
+
+		const FSourceUserCmd Cmd = Translator.Translate(StepInput, NextCommandNumber, State.m_nTickBase);
 		++NextCommandNumber;
 
 		Sim.RunCommand(State, Cmd, Params, *WorldQuery);
@@ -139,6 +182,9 @@ void USourceMovementComponent::TickComponent(float DeltaTime, ELevelTick TickTyp
 
 	if (Steps > 0)
 	{
+		// Only once a step consumed it, otherwise a frame that ran no steps would drop its turn
+		LastStepViewAngles = PendingInput.ViewAngles;
+
 		PublishTransform();
 
 		// Nothing here reads it back, but animation and AI expect it to be current
@@ -177,6 +223,11 @@ void USourceMovementComponent::DrawDebug(float DeltaTime)
 			GEngine->AddOnScreenDebugMessage(BaseKey + 3, 0.f, FColor::Cyan, FString::Printf(TEXT("[Source] traces %2d   planes %d   blocked %d   tick %d   origin (%.3f %.3f %.3f)"), T.TraceCount, T.CollisionPlanes, T.Blocked, State.m_nTickBase, State.Origin.x, State.Origin.y, State.Origin.z));
 
 			GEngine->AddOnScreenDebugMessage(BaseKey + 4, 0.f, FColor::Silver, FString::Printf(TEXT("[Source] groundNormal (%5.2f %5.2f %5.2f)   ducked %d   duckAmount %4.2f"), T.GroundNormal.x, T.GroundNormal.y, T.GroundNormal.z, State.m_bDucked ? 1 : 0, State.m_flDuckAmount));
+
+			static const TCHAR* const WaterLevelNames[] = { TEXT("dry"), TEXT("FEET"), TEXT("WAIST"), TEXT("EYES") };
+			const int32 WaterIndex = FMath::Clamp(static_cast<int32>(State.WaterLevel), 0, 3);
+
+			GEngine->AddOnScreenDebugMessage(BaseKey + 6, 0.f, State.WaterLevel > ESrcWaterLevel::NotInWater ? FColor::Blue : FColor::Silver, FString::Printf(TEXT("[Source] water %s   type %s   waterJump %6.1f   surfaceProps %d"), WaterLevelNames[WaterIndex], State.WaterType & SRC_CONTENTS_SLIME ? TEXT("slime") : State.WaterType & SRC_CONTENTS_WATER ? TEXT("water") : TEXT("none"), State.m_flWaterJumpTime, State.m_surfaceProps));
 		}
 	}
 

@@ -6,30 +6,72 @@
 
 #include "CollisionQueryParams.h"
 #include "CollisionShape.h"
+#include "Components/PrimitiveComponent.h"
 #include "DrawDebugHelpers.h"
 #include "Engine/HitResult.h"
+#include "Engine/Level.h"
 #include "Engine/OverlapResult.h"
 #include "Engine/World.h"
 #include "GameFramework/Actor.h"
 #include "GameFramework/Pawn.h"
 #include "HAL/IConsoleManager.h"
+#include "Materials/MaterialInterface.h"
 #include "PhysicalMaterials/PhysicalMaterial.h"
+#include "PhysicsEngine/BodyInstance.h"
 
 using namespace SourceMath;
 
 namespace
 {
-	// Source's trace name, for the Chaos profiler / collision debugging
 	static const FName SourceMovementTraceTag(TEXT("SourceMovementHull"));
-}
 
-// Sweep visualisation lives on cl_sourcemove_drawtraces; see SourceMovementCVars.h
+	// Water surfaces one sweep will step past before giving up and calling it a miss
+	constexpr int32 MaxNonSolidRetries = 4;
+	constexpr float WaterProbeExtent = 1.0f;
+}
 
 void FSourceWorldQuery_UE::Initialize(UWorld* InWorld, AActor* InIgnoreActor)
 {
 	World = InWorld;
 	IgnoreActor = InIgnoreActor;
 	EntityCache.Reset();
+	StableEntityIds.Reset();
+}
+
+int32 FSourceWorldQuery_UE::ResolveEntityId(const AActor* Actor)
+{
+	const uint32 RuntimeId = Actor->GetUniqueID();
+	if (const int32* Cached = StableEntityIds.Find(RuntimeId))
+	{
+		return *Cached;
+	}
+
+	// GetUniqueID indexes GUObjectArray, so it differs between processes. The saved actor name does
+	// not, and the level name keeps sublevels apart. Hash the strings: GetTypeHash(FName) is itself
+	// a process-local table index. PIE renames the package, not the actor, so strip that off.
+	uint32 Hash = GetTypeHash(Actor->GetName());
+	if (const ULevel* Level = Actor->GetLevel())
+	{
+		Hash = HashCombine(Hash, GetTypeHash(UWorld::RemovePIEPrefix(Level->GetOutermost()->GetName())));
+	}
+
+	// 0 is the world and INDEX_NONE is "no entity", so a real actor must not land on either
+	int32 Id = static_cast<int32>(Hash & 0x7fffffffu);
+	if (Id == 0)
+	{
+		Id = 1;
+	}
+
+	if (const TWeakObjectPtr<const AActor>* Existing = EntityCache.Find(Id))
+	{
+		if (Existing->IsValid() && Existing->Get() != Actor)
+		{
+			UE_LOG(LogSourceMovement, Warning, TEXT("Entity id %d collides between '%s' and '%s'. Ground identity will flip between them, " "and prediction would disagree about which one it is. Rename one of them."), Id, *Existing->Get()->GetName(), *Actor->GetName());
+		}
+	}
+
+	StableEntityIds.Add(RuntimeId, Id);
+	return Id;
 }
 
 FSrcEntityRef FSourceWorldQuery_UE::MakeEntityRef(const AActor* Actor)
@@ -38,11 +80,10 @@ FSrcEntityRef FSourceWorldQuery_UE::MakeEntityRef(const AActor* Actor)
 
 	if (!Actor)
 	{
-		// Hitting the world model yields entity 0
 		return FSrcEntityRef::World();
 	}
 
-	Ref.EntityId = static_cast<int32>(Actor->GetUniqueID());
+	Ref.EntityId = ResolveEntityId(Actor);
 	Ref.bIsPlayer = Actor->IsA<APawn>();
 
 	// Only CheckJumpButton reads bIsWorld, to tell a player apart from the map
@@ -62,7 +103,7 @@ int32 FSourceWorldQuery_UE::ResolveSurfacePropsId(const FHitResult& Hit)
 	return static_cast<int32>(SurfaceType_Default);
 }
 
-void FSourceWorldQuery_UE::TraceHull( const FSrcVec3& Start, const FSrcVec3& End, const FSrcVec3& Mins, const FSrcVec3& Maxs, int32 ContentMask, const FSourceTraceFilter& Filter, FSourceTraceResult& Out)
+void FSourceWorldQuery_UE::TraceHull(const FSrcVec3& Start, const FSrcVec3& End, const FSrcVec3& Mins, const FSrcVec3& Maxs, int32 ContentMask, const FSourceTraceFilter& Filter, FSourceTraceResult& Out)
 {
 	Out.Reset(Start, End);
 
@@ -89,20 +130,39 @@ void FSourceWorldQuery_UE::TraceHull( const FSrcVec3& Start, const FSrcVec3& End
 
 	FCollisionQueryParams Params(SourceMovementTraceTag, bTraceComplex);
 	Params.bReturnPhysicalMaterial = true;
-
-	// The trace filter always passes the moving player itself
 	if (AActor* Ignore = IgnoreActor.Get())
 	{
 		Params.AddIgnoredActor(Ignore);
 	}
 
 	FHitResult Hit;
-	++QueryCount;
-	const bool bBlocking = W->SweepSingleByChannel(Hit, UEStart, UEEnd, FQuat::Identity, TraceChannel, FCollisionShape::MakeBox(Extent), Params);
+	bool bBlocking = false;
+
+	// Water is not in MASK_PLAYERSOLID, so it must not stop the player. Retrying past it keeps the
+	// ordinary case at one sweep, where a multi-sweep would cost every level.
+	for (int32 Attempt = 0; Attempt < MaxNonSolidRetries; ++Attempt)
+	{
+		++QueryCount;
+		bBlocking = W->SweepSingleByChannel(Hit, UEStart, UEEnd, FQuat::Identity, TraceChannel, FCollisionShape::MakeBox(Extent), Params);
+
+		if (!bBlocking)
+		{
+			break;
+		}
+
+		const int32 Water = WaterContentsForSurface(ResolveSurfacePropsId(Hit));
+		if (Water == 0 || (Water & ContentMask) != 0)
+		{
+			break;
+		}
+
+		Params.AddIgnoredComponent(Hit.GetComponent());
+		bBlocking = false;
+	}
 
 	if (!bBlocking)
 	{
-		// Clean miss: Out is already the "completed the whole sweep" state from Reset
+		// Reset already left this as a completed sweep
 		return;
 	}
 
@@ -127,14 +187,9 @@ void FSourceWorldQuery_UE::TraceHull( const FSrcVec3& Start, const FSrcVec3& End
 		Out.bStartSolid = true;
 		Out.PenetrationDepth = static_cast<srcfloat>(Hit.PenetrationDepth * SourceUnits::UUToUnits);
 
-		FCollisionQueryParams EndParams(SourceMovementTraceTag, bTraceComplex);
-		if (AActor* Ignore = IgnoreActor.Get())
-		{
-			EndParams.AddIgnoredActor(Ignore);
-		}
-
+		// Same Params, so water skipped above stays skipped here
 		++QueryCount;
-		const bool bEndSolid = W->OverlapBlockingTestByChannel( UEEnd, FQuat::Identity, TraceChannel, FCollisionShape::MakeBox(Extent), EndParams);
+		const bool bEndSolid = W->OverlapBlockingTestByChannel(UEEnd, FQuat::Identity, TraceChannel, FCollisionShape::MakeBox(Extent), Params);
 
 		if (bEndSolid)
 		{
@@ -188,7 +243,6 @@ void FSourceWorldQuery_UE::TraceHull( const FSrcVec3& Start, const FSrcVec3& End
 
 	const srcfloat f = (d1 - FSourceMovementParams::DistEpsilon) / (d1 - d2);
 
-	// cl_sourcemove_tracelog
 	if (f <= 0.f && SourceMovementCVars::GetTraceLog())
 	{
 		UE_LOG(LogSourceMovement, Warning, TEXT("tracelog DEGENERATE  N(%.4f %.4f %.4f) d1=%.6f d2=%.6f f=%.6f  chaosTime=%.6f\n")
@@ -203,14 +257,8 @@ void FSourceWorldQuery_UE::TraceHull( const FSrcVec3& Start, const FSrcVec3& End
 	if (f <= 0.f)
 	{
 		// Already at or past the standoff before the sweep starts, so this plane yields no fraction
-		FCollisionQueryParams EndParams(SourceMovementTraceTag, bTraceComplex);
-		if (AActor* Ignore = IgnoreActor.Get())
-		{
-			EndParams.AddIgnoredActor(Ignore);
-		}
-
 		++QueryCount;
-		const bool bEndSolid = W->OverlapBlockingTestByChannel( UEEnd, FQuat::Identity, TraceChannel, FCollisionShape::MakeBox(Extent), EndParams);
+		const bool bEndSolid = W->OverlapBlockingTestByChannel(UEEnd, FQuat::Identity, TraceChannel, FCollisionShape::MakeBox(Extent), Params);
 
 		if (SourceMovementCVars::GetTraceLog())
 		{
@@ -219,12 +267,10 @@ void FSourceWorldQuery_UE::TraceHull( const FSrcVec3& Start, const FSrcVec3& End
 
 		if (!bEndSolid)
 		{
-			// Seam
 			Out.Reset(Start, End);
 			return;
 		}
 
-		// Real obstruction
 		Fraction = 0.f;
 	}
 
@@ -232,8 +278,6 @@ void FSourceWorldQuery_UE::TraceHull( const FSrcVec3& Start, const FSrcVec3& End
 	VectorMA(Start, Out.Fraction, Delta, Out.EndPos);
 
 	DrawSweepDebug(Start, Mins, Maxs, Out);
-
-	(void)ContentMask;  // Channel filtering already happened; Source's content bits have no analogue
 }
 
 void FSourceWorldQuery_UE::DrawSweepDebug(const FSrcVec3& Start, const FSrcVec3& Mins, const FSrcVec3& Maxs, const FSourceTraceResult& Result) const
@@ -262,7 +306,6 @@ void FSourceWorldQuery_UE::DrawSweepDebug(const FSrcVec3& Start, const FSrcVec3&
 
 	const FColor Color = Result.bAllSolid ? FColor::Red : Result.bStartSolid ? FColor::Magenta : Result.bDidHit ? FColor::Orange : FColor::Silver;
 
-	// The sweep itself, and the box where it actually stopped
 	DrawDebugLine(W, UEStart, UEStop, Color, false, -1.f, 0, 0.5f);
 	DrawDebugBox(W, UEStop, Extent, Color, false, -1.f, 0, 0.5f);
 
@@ -299,7 +342,8 @@ void FSourceWorldQuery_UE::TestHullOverlap(const FSrcVec3& At, const FSrcVec3& M
 	const FOverlapResult* Blocking = nullptr;
 	for (const FOverlapResult& Result : Overlaps)
 	{
-		if (Result.bBlockingHit)
+		// Standing in water is not being stuck
+		if (Result.bBlockingHit && WaterContentsForComponent(Result.GetComponent()) == 0)
 		{
 			Blocking = &Result;
 			break;
@@ -308,7 +352,6 @@ void FSourceWorldQuery_UE::TestHullOverlap(const FSrcVec3& At, const FSrcVec3& M
 
 	if (!Blocking)
 	{
-		// Not solid: Reset already left fraction 1 and endpos == At
 		return;
 	}
 
@@ -325,10 +368,83 @@ void FSourceWorldQuery_UE::TestHullOverlap(const FSrcVec3& At, const FSrcVec3& M
 
 int32 FSourceWorldQuery_UE::GetPointContents(const FSrcVec3& Point, int32 ContentMask)
 {
-	// Stub: water volumes are not ported, so every point reads as empty
-	(void)Point;
-	(void)ContentMask;
-	return SRC_CONTENTS_EMPTY;
+	UWorld* W = World.Get();
+	if (!W)
+	{
+		return SRC_CONTENTS_EMPTY;
+	}
+
+	const FVector UEPoint = SourceUnits::ToUEPosition(Point);
+
+	FCollisionQueryParams Params(SourceMovementTraceTag, bTraceComplex);
+	Params.bReturnPhysicalMaterial = true;
+	if (AActor* Ignore = IgnoreActor.Get())
+	{
+		Params.AddIgnoredActor(Ignore);
+	}
+
+	// Containment, so water has to be a volume with SIMPLE collision: an Unreal overlap cannot see a
+	// Complex-as-Simple mesh, which is what a map export leaves behind.
+	TArray<FOverlapResult> Overlaps;
+	++QueryCount;
+	W->OverlapMultiByChannel(Overlaps, UEPoint, FQuat::Identity, TraceChannel, FCollisionShape::MakeSphere(WaterProbeExtent), Params);
+
+	int32 Contents = SRC_CONTENTS_EMPTY;
+	for (const FOverlapResult& Result : Overlaps)
+	{
+		const int32 Water = WaterContentsForComponent(Result.GetComponent());
+		Contents |= Water;
+
+		if (Result.bBlockingHit && Water == SRC_CONTENTS_EMPTY)
+		{
+			Contents |= SRC_CONTENTS_SOLID;
+		}
+	}
+
+	return Contents & ContentMask;
+}
+
+int32 FSourceWorldQuery_UE::WaterContentsForSurface(int32 SurfacePropsId) const
+{
+	const int32* Bit = WaterSurfaces.Find(SurfacePropsId);
+	return Bit ? *Bit : SRC_CONTENTS_EMPTY;
+}
+
+int32 FSourceWorldQuery_UE::WaterContentsForComponent(const UPrimitiveComponent* Component) const
+{
+	if (!Component || WaterSurfaces.IsEmpty())
+	{
+		return SRC_CONTENTS_EMPTY;
+	}
+
+	FBodyInstance* Body = Component->GetBodyInstance();
+	if (const UPhysicalMaterial* Simple = Body ? Body->GetSimplePhysicalMaterial() : nullptr)
+	{
+		const int32 Bits = WaterContentsForSurface(static_cast<int32>(Simple->SurfaceType.GetValue()));
+		if (Bits != SRC_CONTENTS_EMPTY)
+		{
+			return Bits;
+		}
+	}
+
+	// Phys Material Override missed, so try the mesh materials, where imported geometry carries it
+	int32 Contents = SRC_CONTENTS_EMPTY;
+	const int32 NumMaterials = Component->GetNumMaterials();
+	for (int32 Index = 0; Index < NumMaterials; ++Index)
+	{
+		const UMaterialInterface* Material = Component->GetMaterial(Index);
+		if (const UPhysicalMaterial* PhysMat = Material ? Material->GetPhysicalMaterial() : nullptr)
+		{
+			Contents |= WaterContentsForSurface(static_cast<int32>(PhysMat->SurfaceType.GetValue()));
+		}
+	}
+
+	return Contents;
+}
+
+void FSourceWorldQuery_UE::SetWaterSurface(int32 SurfacePropsId, int32 ContentsBit)
+{
+	WaterSurfaces.Add(SurfacePropsId, ContentsBit);
 }
 
 srcfloat FSourceWorldQuery_UE::GetSurfaceFriction(int32 SurfacePropsId) const

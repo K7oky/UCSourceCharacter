@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Chaos/ChaosEngineInterface.h"  // EPhysicalSurface
 #include "Engine/EngineTypes.h"  // ECollisionChannel
 #include "GameFramework/PawnMovementComponent.h"
 
@@ -58,6 +59,17 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Source Movement|Collision")
 	float FlatGroundZ = 0.f;
 
+	// A ladder mesh needs one of these assigned, as its material or as Phys Material Override
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Source Movement|Collision")
+	TSet<TEnumAsByte<EPhysicalSurface>> ClimbableSurfaces = { SurfaceType2, SurfaceType3 };
+
+	// Assigned the same way, but these stop being solid to the player. Swimming needs a volume
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Source Movement|Collision")
+	TEnumAsByte<EPhysicalSurface> WaterSurface = SurfaceType4;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Source Movement|Collision")
+	TEnumAsByte<EPhysicalSurface> SlimeSurface = SurfaceType5;
+
 	void SetInputState(const FSourceInputState& InInput) { PendingInput = InInput; }
 	const FSourceInputState& GetInputState() const { return PendingInput; }
 	FSourceInputState& GetMutableInputState() { return PendingInput; }
@@ -74,6 +86,9 @@ public:
 	FSourceMovementEventsSignature OnMovementEvents;
 
 	void RebuildParams();
+
+	// Ticks this component after the controller has read the mouse. Call again on possession
+	void BindInputOrdering();
 
 	ISourceWorldQuery* GetWorldQuery() const { return WorldQuery.Get(); }
 
@@ -106,12 +121,14 @@ private:
 	FSourceInputTranslator Translator;
 	FSourceInputState PendingInput;
 
-	// Owns the active collision backend through the ABSTRACT interface, not the concrete type
 	TUniquePtr<ISourceWorldQuery> WorldQuery;
 
 	// Non-owning view of WorldQuery when the analytic backend is active
 	FSourceWorldQuery_Analytic* AnalyticWorld = nullptr;
 	float Accumulator = 0.f;
+
+	// What the last step used, so a frame's turn can be split across its steps
+	FSrcAngles LastStepViewAngles = FSrcAngles();
 	int32 NextCommandNumber = 1;
 	bool bWarnedStepBudget = false;
 };

@@ -87,6 +87,16 @@ void ASourcePlayerPawn::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	Super::EndPlay(EndPlayReason);
 }
 
+void ASourcePlayerPawn::PossessedBy(AController* NewController)
+{
+	Super::PossessedBy(NewController);
+
+	if (SourceMovement)
+	{
+		SourceMovement->BindInputOrdering();
+	}
+}
+
 void ASourcePlayerPawn::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);

@@ -44,7 +44,7 @@ struct FSourceMovementParams
 	srcfloat TimeBetweenDucks = 0.4f;
 	srcfloat CrouchSpamPenalty = 2.0f;
 
-	// CS player speeds and the modifiers applied to them
+	// CS player speeds and their modifiers
 	bool bAccelerateUseWeaponSpeed = true;
 	srcfloat VelocityRecoveryRate = 1.0f / 2.5f;
 	srcfloat PlayerSpeedRun = 260.0f;
@@ -74,10 +74,39 @@ struct FSourceMovementParams
 	static constexpr srcfloat PlayerMinBounceSpeed = 200.0f;
 	static constexpr srcfloat PlayerFallPunchThreshold = 350.0f;
 	static constexpr srcfloat MaxClimbSpeed = 200.0f;
+	static constexpr srcfloat CheckStuckMinTime = 0.05f;
 
 	// Noclip
 	srcfloat NoClipSpeed = 5.0f;
 	srcfloat NoClipAccelerate = 5.0f;
+
+	// Ladders. Steeper than Angle and the sideways move is scaled by Dampen instead of sliding off
+	srcfloat LadderDampen = 0.2f;
+	srcfloat LadderAngle = -0.707f;
+	srcfloat LadderScaleSpeed = 0.78f;
+	srcfloat PlayerSpeedClimbModifier = 0.34f;
+	static constexpr srcfloat LadderIgnoreJumpTime = 0.2f;
+	static constexpr srcfloat LadderReachOn = 10.0f;
+	static constexpr srcfloat LadderReachOff = 2.0f;
+	static constexpr srcfloat LadderJumpOffSpeed = 270.0f;
+	static constexpr srcfloat LadderEdgeGrabDistance = 24.0f;
+	static constexpr srcfloat LadderEdgeGrabHeightDelta = 6.0f;
+
+	// Water. All literals: the only cvars the water path reads are sv_friction and sv_accelerate
+	static constexpr srcfloat WaterSwimSpeedScale = 0.8f;
+	static constexpr srcfloat WaterSinkSpeed = 60.0f;
+	static constexpr srcfloat WaterJumpHeight = 8.0f;
+	static constexpr srcfloat WaterJumpProbeDistance = 24.0f;
+	static constexpr srcfloat WaterJumpPushUp = 256.0f;
+	static constexpr srcfloat WaterJumpOutVelocity = -50.0f;
+	static constexpr srcfloat WaterJumpDurationMsecs = 2000.0f;
+	static constexpr srcfloat WaterJumpMaxMsecs = 10000.0f;
+	static constexpr srcfloat WaterJumpEntryVelocityZ = -180.0f;
+	static constexpr srcfloat WaterJumpLandProbeDepth = 1024.0f;
+
+	// Wading step sounds. The host overwrites these from the materials assigned in the editor
+	int32 WaterSurfacePropsId = 4;
+	int32 SlimeSurfacePropsId = 5;
 
 	// Footstep audio. These drive the decision to step, not the playback
 	bool bFootsteps = true;
@@ -103,7 +132,6 @@ struct FSourceMovementParams
 	int32 WeaponZoomLevel = 0;
 	int32 WeaponZoomLevels = 1;
 
-	// Starting value of the velocity modifier that recovers on the ground
 	srcfloat VelocityModifierInitial = 1.0f;
 
 	// Geometry

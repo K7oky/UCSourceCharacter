@@ -49,6 +49,7 @@ enum ESrcEntityFlags : uint32
 	SRC_FL_ONGROUND = (1u << 0),
 	SRC_FL_DUCKING = (1u << 1),  // fully crouched
 	SRC_FL_ANIMDUCKING = (1u << 2),  // crouching or uncrouching, possibly mid-transition
+	SRC_FL_WATERJUMP = (1u << 3),
 	SRC_FL_ONTRAIN = (1u << 4),
 	SRC_FL_FROZEN = (1u << 6),
 	SRC_FL_ATCONTROLS = (1u << 7),

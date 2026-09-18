@@ -70,6 +70,10 @@ private:
 	int32 m_iSpeedCropped = SRC_SPEED_CROPPED_RESET;
 	ESrcWaterLevel m_nOldWaterLevel = ESrcWaterLevel::NotInWater;
 	srcfloat m_flWaterEntryTime = 0.f;
+	srcfloat m_flStuckCheckTime = 0.f;
+
+	// Source keeps this in a function-local static, so it is shared by every player there
+	int32 m_nWadeStepSkip = 0;
 	int32 m_nOnLadder = 0;
 
 	// Basis vectors built from the command view angles
@@ -77,6 +81,7 @@ private:
 	FSrcVec3 m_vecRight = FSrcVec3::Zero;
 	FSrcVec3 m_vecUp = FSrcVec3::Zero;
 	int32 m_nTraceCount = 0;
+	// Written, never read: Source exposes both to the engine trace filter, which has no analogue here
 	bool m_bProcessingMovement = false;
 	bool m_bInStuckTest = false;
 	FSourceMovementTelemetry Telemetry;
@@ -89,6 +94,7 @@ private:
 
 	bool CanMove() const;
 	bool CheckInterval_Stuck() const;
+	FSrcVec3 GetRandomStuckOffset();
 
 	void UpdateStepSound();
 
@@ -167,8 +173,20 @@ private:
 	void DuckUntilOnGround();
 	void TraceHullExplicit(const FSrcVec3& start, const FSrcVec3& end, const FSrcVec3& mins, const FSrcVec3& maxs, int32 fMask, FSourceTraceResult& pm);
 
-	// Not yet implemented
-	int32 CheckStuck();
-	bool CheckWater();
+	// Ladders
 	bool LadderMove();
+	void FullLadderMove();
+	bool OnLadder(const FSourceTraceResult& trace) const;
+	srcfloat ClimbSpeed() const;
+	srcfloat LadderDistance() const;
+	int32 LadderMask() const;
+
+	// Water and slime
+	bool CheckWater();
+	void WaterMove();
+	void WaterJump();
+	void CheckWaterJump();
+	void GetWaterCheckPosition(ESrcWaterLevel waterLevel, FSrcVec3& pos) const;
+
+	int32 CheckStuck();
 };

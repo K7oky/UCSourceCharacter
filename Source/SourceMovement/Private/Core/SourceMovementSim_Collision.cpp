@@ -318,10 +318,8 @@ void FSourceMovementSim::StepMove(FSrcVec3& vecDestination, FSourceTraceResult& 
 	VectorCopy(mv->GetAbsOrigin(), vecUpPos);
 
 	// Purely horizontal comparison, so a step-up that gained height but less ground is rejected
-	const srcfloat flDownDist = (vecDownPos.x - vecPos.x) * (vecDownPos.x - vecPos.x)
-			+ (vecDownPos.y - vecPos.y) * (vecDownPos.y - vecPos.y);
-	const srcfloat flUpDist = (vecUpPos.x - vecPos.x) * (vecUpPos.x - vecPos.x)
-			+ (vecUpPos.y - vecPos.y) * (vecUpPos.y - vecPos.y);
+	const srcfloat flDownDist = (vecDownPos.x - vecPos.x) * (vecDownPos.x - vecPos.x) + (vecDownPos.y - vecPos.y) * (vecDownPos.y - vecPos.y);
+	const srcfloat flUpDist = (vecUpPos.x - vecPos.x) * (vecUpPos.x - vecPos.x) + (vecUpPos.y - vecPos.y) * (vecUpPos.y - vecPos.y);
 
 	if (flDownDist > flUpDist)
 	{

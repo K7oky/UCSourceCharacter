@@ -50,7 +50,6 @@ void FSourceMovementSim::SetStepSoundTime(ESrcStepSoundTime iStepSoundTime, bool
 
 void FSourceMovementSim::PlayStepSound(srcfloat fvol)
 {
-	// Records the step, the audio component is what actually plays it
 	if (!params->bFootsteps)
 	{
 		return;
@@ -79,7 +78,7 @@ void FSourceMovementSim::UpdateStepSound()
 			SetStepSoundTime(ESrcStepSoundTime::Normal, false);
 		}
 
-		return;  // player is not running, no footsteps
+		return;
 	}
 
 	UpdateStepSound_BaseClass();
@@ -141,14 +140,51 @@ void FSourceMovementSim::UpdateStepSound_BaseClass()
 
 	bWalking = speed < velrun;
 
-	// Not ported: the ladder and water step timings, so everything uses the normal one
-	SetStepSoundTime(ESrcStepSoundTime::Normal, bWalking);
+	// CS samples the knee rather than the waist to decide whether you are wading
+	FSrcVec3 knee = mv->GetAbsOrigin();
+	const srcfloat height = GetPlayerMaxs()[2] - GetPlayerMins()[2];
+	knee[2] = mv->GetAbsOrigin()[2] + 0.2f * height;
 
-	// No surfaceproperties table, so every surface gets the CONCRETE numbers
-	fvol = bWalking ? params->FootstepVolumeWalk : params->FootstepVolumeRun;
-	if (player->HasFlag(SRC_FL_DUCKING))
+	if (fLadder)
 	{
-		fvol *= 0.65f;
+		// LadderMove already put the ladder's material in m_surfaceProps
+		SetStepSoundTime(ESrcStepSoundTime::OnLadder, bWalking);
+		fvol = 0.5f;
+	}
+	else if (world->GetPointContents(knee, SRC_MASK_WATER) & SRC_MASK_WATER)
+	{
+		// Knee deep, so only every fourth step wades
+		if (m_nWadeStepSkip == 0)
+		{
+			m_nWadeStepSkip++;
+			return;
+		}
+		if (m_nWadeStepSkip++ == 3)
+		{
+			m_nWadeStepSkip = 0;
+		}
+
+		// Source has separate "wade" and "water" surfaces, we do not: only volume and timing differ
+		player->m_surfaceProps = player->WaterType & SRC_CONTENTS_SLIME ? params->SlimeSurfacePropsId : params->WaterSurfacePropsId;
+		SetStepSoundTime(ESrcStepSoundTime::WaterKnee, bWalking);
+		fvol = 0.65f;
+	}
+	else if (player->WaterLevel == ESrcWaterLevel::Feet)
+	{
+		player->m_surfaceProps = player->WaterType & SRC_CONTENTS_SLIME ? params->SlimeSurfacePropsId : params->WaterSurfacePropsId;
+		SetStepSoundTime(ESrcStepSoundTime::WaterFoot, bWalking);
+		fvol = bWalking ? 0.2f : 0.5f;
+	}
+	else
+	{
+		SetStepSoundTime(ESrcStepSoundTime::Normal, bWalking);
+
+		// No surfaceproperties table, so every surface gets the CONCRETE numbers
+		fvol = bWalking ? params->FootstepVolumeWalk : params->FootstepVolumeRun;
+		if (player->HasFlag(SRC_FL_DUCKING))
+		{
+			fvol *= 0.65f;
+		}
 	}
 
 	PlayStepSound(fvol);

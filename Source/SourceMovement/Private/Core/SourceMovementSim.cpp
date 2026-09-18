@@ -250,7 +250,7 @@ void FSourceMovementSim::PlayerMove()
 		break;
 
 	case ESrcMoveType::Ladder:
-		// Not ported: ladder climbing
+		FullLadderMove();
 		break;
 
 	case ESrcMoveType::Walk:
@@ -649,15 +649,46 @@ void FSourceMovementSim::FullWalkMove()
 		StartGravity();
 	}
 
+	// Mid-hop out of water: the whole tick is just the latched horizontal velocity
 	if (player->m_flWaterJumpTime)
 	{
-		// Not ported: the water jump
+		WaterJump();
+		TryPlayerMove();
+		CheckWater();
 		return;
 	}
 
 	if (player->WaterLevel >= ESrcWaterLevel::Waist)
 	{
-		// Not ported: swimming
+		// Waist deep and nudging a ledge is what starts the hop out
+		if (player->WaterLevel == ESrcWaterLevel::Waist)
+		{
+			CheckWaterJump();
+		}
+
+		// Falling again means the hop failed, so stop waiting on it
+		if (mv->Velocity[2] < 0 && player->m_flWaterJumpTime)
+		{
+			player->m_flWaterJumpTime = 0;
+		}
+
+		if (mv->Buttons & SRC_IN_JUMP)
+		{
+			CheckJumpButton();
+		}
+		else
+		{
+			mv->OldButtons &= ~SRC_IN_JUMP;
+		}
+
+		WaterMove();
+		CategorizePosition();
+
+		if (player->GroundEntity.IsValid())
+		{
+			mv->Velocity[2] = 0;
+		}
+
 		return;
 	}
 
@@ -1036,22 +1067,108 @@ bool FSourceMovementSim::CheckInterval_Stuck() const
 	return ((player->m_nTickBase + player->EntIndex) % tickInterval) == 0;
 }
 
-// Stubs. The call sites above are already in the right place.
+namespace
+{
+	// Built in the original's order, because the order decides which way a stuck player pops out
+	const TArray<FSrcVec3>& GetStuckTable()
+	{
+		static const TArray<FSrcVec3> Table = []()
+		{
+			TArray<FSrcVec3> T;
+			T.Reserve(54);
+
+			for (srcfloat z = -0.125f; z <= 0.125f; z += 0.125f) { T.Add(FSrcVec3(0.f, 0.f, z)); }
+			for (srcfloat y = -0.125f; y <= 0.125f; y += 0.125f) { T.Add(FSrcVec3(0.f, y, 0.f)); }
+			for (srcfloat x = -0.125f; x <= 0.125f; x += 0.125f) { T.Add(FSrcVec3(x, 0.f, 0.f)); }
+
+			for (srcfloat x = -0.125f; x <= 0.125f; x += 0.250f)
+			{
+				for (srcfloat y = -0.125f; y <= 0.125f; y += 0.250f)
+				{
+					for (srcfloat z = -0.125f; z <= 0.125f; z += 0.250f) { T.Add(FSrcVec3(x, y, z)); }
+				}
+			}
+
+			const srcfloat zi[3] = { 0.f, 1.f, 6.f };
+			for (int32 i = 0; i < 3; ++i) { T.Add(FSrcVec3(0.f, 0.f, zi[i])); }
+			for (srcfloat y = -2.f; y <= 2.f; y += 2.f) { T.Add(FSrcVec3(0.f, y, 0.f)); }
+			for (srcfloat x = -2.f; x <= 2.f; x += 2.f) { T.Add(FSrcVec3(x, 0.f, 0.f)); }
+
+			for (int32 i = 0; i < 3; ++i)
+			{
+				for (srcfloat x = -2.f; x <= 2.f; x += 2.f)
+				{
+					for (srcfloat y = -2.f; y <= 2.f; y += 2.f) { T.Add(FSrcVec3(x, y, zi[i])); }
+				}
+			}
+
+			// The original declares 54 slots and fills 53; the last stays zero
+			while (T.Num() < 54) { T.Add(FSrcVec3::Zero); }
+			return T;
+		}();
+		return Table;
+	}
+}
+
+FSrcVec3 FSourceMovementSim::GetRandomStuckOffset()
+{
+	const int32 idx = player->m_StuckLast++;
+	return GetStuckTable()[idx % 54];
+}
 
 int32 FSourceMovementSim::CheckStuck()
 {
-	// Not ported: the 54-entry jitter table that nudges a stuck player free
-	return 0;
-}
+	FSourceTraceResult traceresult;
 
-bool FSourceMovementSim::CheckWater()
-{
-	// Stub: nothing ever raises the water level, so this only reports what was set
-	return player->WaterLevel > ESrcWaterLevel::Feet;
-}
+	m_bInStuckTest = true;
+	const bool bStuck = TestPlayerPosition(mv->GetAbsOrigin(), traceresult);
+	m_bInStuckTest = false;
 
-bool FSourceMovementSim::LadderMove()
-{
-	// Stub: ladders are not ported, so the player is never on one
-	return false;
+	if (!bStuck)
+	{
+		player->m_StuckLast = 0;
+		return 0;
+	}
+
+	const FSrcVec3 base = mv->GetAbsOrigin();
+
+	// Against world geometry the original walks the whole table in one go
+	if (traceresult.Entity.bIsWorld)
+	{
+		player->m_StuckLast = 0;
+		for (int32 nReps = 0; nReps < 54; ++nReps)
+		{
+			const FSrcVec3 test = base + GetRandomStuckOffset();
+			FSourceTraceResult probe;
+			if (!TestPlayerPosition(test, probe))
+			{
+				player->m_StuckLast = 0;
+				mv->SetAbsOrigin(test);
+				return 0;
+			}
+		}
+	}
+
+	// One nudge per interval. Source rate-limits on wall clock, this uses the tick clock so a
+	// replay lands on the same offsets
+	if (m_flStuckCheckTime >= curtime - FSourceMovementParams::CheckStuckMinTime)
+	{
+		return 1;
+	}
+	m_flStuckCheckTime = curtime;
+
+	m_bInStuckTest = true;
+
+	const FSrcVec3 test = base + GetRandomStuckOffset();
+	FSourceTraceResult probe;
+	if (!TestPlayerPosition(test, probe))
+	{
+		player->m_StuckLast = 0;
+		mv->SetAbsOrigin(test);
+		// The original leaves the flag set here too, ProcessMovement resets it next tick
+		return 0;
+	}
+
+	m_bInStuckTest = false;
+	return 1;
 }
