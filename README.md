@@ -315,7 +315,7 @@ contain two footsteps.
 
 ### Wiring up custom sounds
 
-1. Import the required waves anywhere in `Content/`.
+1. Import the Sound Wave assets anywhere in `Content/`.
 2. Select the player pawn and its **`MovementAudio`** component.
 3. Fill in **`Default Sounds`**:
 

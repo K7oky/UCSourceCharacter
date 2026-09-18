@@ -317,9 +317,9 @@ FSourceMovementSim  ──► FSourceMovementEvents ──► USourceMovementAud
 
 ### Подключение своих звуков
 
-1. Импортируй волны куда угодно в `Content/`.
-2. Выбери пешку игрока, затем её компонент **`MovementAudio`**.
-3. Заполни **`Default Sounds`**:
+1. Импортируйте звуковые ассеты в любое место внутри `Content/`.
+2. Выберите пешку игрока и её компонент **`MovementAudio`**.
+3. Заполните **`Default Sounds`**:
 
    | Поле | Что ожидает |
    |---|---|
@@ -327,8 +327,8 @@ FSourceMovementSim  ──► FSourceMovementEvents ──► USourceMovementAud
    | `Land` | Звуки приземления, выбираются случайно |
    | `Jump Launch` | Один клип, `Default.WalkJump` из Source |
 
-4. По желанию задаётся **`Surf Wind Loop`**. Волна обязана быть помечена **Looping** или обёрнута в
-   зацикленный Sound Cue — компонент пишет предупреждение, если это не так, потому что ветер,
+4. По желанию задаётся **`Surf Wind Loop`**. Ассету нужен флаг **Looping** либо обёртка в
+   зацикленный Sound Cue — если этого нет, компонент пишет предупреждение, потому что ветер,
    прозвучавший один раз, неотличим от отсутствующего ассета.
 
 Клипы выбираются случайно с защитой от немедленного повтора, так что двух одинаковых шагов подряд
@@ -339,17 +339,16 @@ FSourceMovementSim  ──► FSourceMovementEvents ──► USourceMovementAud
 Поверхности различаются по **`EPhysicalSurface`** — это ближайший аналог `surfaceproperties.txt`
 из Source:
 
-1. **Project Settings → Physics → Physical Surfaces** — назови тип поверхности, например `Metal`.
-2. Создай **Physical Material** и выставь ему **Surface Type**.
-3. Назначь этот Physical Material материалу поверхности.
-4. В аудио-компоненте добавьтете запись в **`Surface Sounds`** для этого типа.
+1. **Project Settings → Physics → Physical Surfaces** — задайте имя типа поверхности, например `Metal`.
+2. Создайте **Physical Material** и выставьте ему **Surface Type**.
+3. Назначьте этот Physical Material материалу поверхности.
+4. В аудиокомпоненте добавьте запись в **`Surface Sounds`** для этого типа.
 
 Всё без Physical Material попадает в `SurfaceType_Default` и откатывается к `Default Sounds`.
 
 > [!NOTE]
 > Идентификатор поверхности — это значение `EPhysicalSurface`, намеренно **не** `GetUniqueID()`
-> ассета. UniqueID стабилен только внутри одного процесса, против него таблицу авторить невозможно
-> в принципе.
+> ассета: UniqueID стабилен только внутри одного процесса, и таблицу против него составить нельзя.
 
 ### Пути по умолчанию
 
