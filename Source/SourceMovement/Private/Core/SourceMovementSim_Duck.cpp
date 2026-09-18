@@ -1,5 +1,3 @@
-// Duck / unduck
-
 #include "Core/SourceMovementSim.h"
 
 using namespace SourceMath;
@@ -52,7 +50,8 @@ void FSourceMovementSim::FixPlayerCrouchStuck(bool upward)
 		}
 	}
 
-	mv->SetAbsOrigin(test);  // Failed
+	// Every nudge hit something, so put the origin back
+	mv->SetAbsOrigin(test);
 }
 
 bool FSourceMovementSim::CanUnduck()
@@ -94,8 +93,6 @@ bool FSourceMovementSim::CanUnduck()
 
 	return true;
 }
-
-// Stance transitions
 
 void FSourceMovementSim::FinishDuck()
 {
@@ -162,8 +159,6 @@ void FSourceMovementSim::FinishUnDuck()
 	CategorizePosition();
 	player->m_flDuckAmount = 0.0f;
 }
-
-// Bot auto crouch-jump
 
 void FSourceMovementSim::DuckUntilOnGround()
 {
@@ -384,8 +379,6 @@ void FSourceMovementSim::HandleDuckingSpeedCrop(srcfloat duckFraction)
 		}
 	}
 }
-
-// Legacy duck-jump eye interpolation
 
 void FSourceMovementSim::UpdateDuckJumpEyeOffset()
 {

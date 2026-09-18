@@ -1,5 +1,3 @@
-// Velocity model: friction, ground/air acceleration, walk/air move, jump, stamina
-
 #include "Core/SourceMovementSim.h"
 
 using namespace SourceMath;
@@ -68,8 +66,6 @@ void FSourceMovementSim::Friction()
 	Telemetry.AppliedFriction = friction;
 }
 
-// Acceleration
-
 bool FSourceMovementSim::CanAccelerate()
 {
 	if (player->deadflag)
@@ -82,7 +78,6 @@ bool FSourceMovementSim::CanAccelerate()
 
 void FSourceMovementSim::Accelerate(FSrcVec3& wishdir, srcfloat wishspeed, srcfloat accel)
 {
-	// The exponential acceleration branch is dead: its time constant is a compile-time zero
 	if (!CanAccelerate())
 	{
 		return;
@@ -91,7 +86,6 @@ void FSourceMovementSim::Accelerate(FSrcVec3& wishdir, srcfloat wishspeed, srcfl
 	srcfloat flStoredAccel = accel;
 	const srcfloat currentspeed = mv->Velocity.Dot(wishdir);
 
-	// Reduce wishspeed by the amount of veer
 	const srcfloat addspeed = wishspeed - currentspeed;
 
 	if (addspeed <= 0)
@@ -318,7 +312,6 @@ void FSourceMovementSim::WalkMove()
 	Accelerate(wishdir, wishspeed, params->Accelerate);
 	mv->Velocity[2] = 0;
 
-	// The hard ground speed cap
 	if (mv->Velocity.LengthSqr() > mv->MaxSpeed * mv->MaxSpeed)
 	{
 		const srcfloat fRatio = mv->MaxSpeed / mv->Velocity.Length();
@@ -422,8 +415,6 @@ void FSourceMovementSim::AirMove()
 
 	VectorSubtract(mv->Velocity, player->BaseVelocity, mv->Velocity);
 }
-
-// Jump
 
 void FSourceMovementSim::PreventBunnyJumping()
 {

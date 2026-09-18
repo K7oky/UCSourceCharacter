@@ -46,9 +46,8 @@ int32 FSourceWorldQuery_UE::ResolveEntityId(const AActor* Actor)
 		return *Cached;
 	}
 
-	// GetUniqueID indexes GUObjectArray, so it differs between processes. The saved actor name does
-	// not, and the level name keeps sublevels apart. Hash the strings: GetTypeHash(FName) is itself
-	// a process-local table index. PIE renames the package, not the actor, so strip that off.
+	// GetUniqueID indexes GUObjectArray and GetTypeHash(FName) indexes the name table, so both differ
+	// between processes. The saved names do not. PIE renames the package, not the actor.
 	uint32 Hash = GetTypeHash(Actor->GetName());
 	if (const ULevel* Level = Actor->GetLevel())
 	{
@@ -66,7 +65,7 @@ int32 FSourceWorldQuery_UE::ResolveEntityId(const AActor* Actor)
 	{
 		if (Existing->IsValid() && Existing->Get() != Actor)
 		{
-			UE_LOG(LogSourceMovement, Warning, TEXT("Entity id %d collides between '%s' and '%s'. Ground identity will flip between them, " "and prediction would disagree about which one it is. Rename one of them."), Id, *Existing->Get()->GetName(), *Actor->GetName());
+			UE_LOG(LogSourceMovement, Warning, TEXT("Entity id %d collides between '%s' and '%s', so ground identity will flip between them. " "Rename one."), Id, *Existing->Get()->GetName(), *Actor->GetName());
 		}
 	}
 

@@ -2,8 +2,6 @@
 
 using namespace SourceMath;
 
-// World construction
-
 int32 FSourceWorldQuery_Analytic::AddBrush(const FBrush& Brush)
 {
 	return Brushes.Add(Brush);
@@ -16,7 +14,6 @@ int32 FSourceWorldQuery_Analytic::AddBox(const FSrcVec3& Mins, const FSrcVec3& M
 	Brush.Entity = Entity;
 	Brush.SurfacePropsId = SurfacePropsId;
 
-	// Six axis-aligned half-spaces
 	Brush.Planes.Add({ FSrcVec3(1.f, 0.f, 0.f), Maxs.x });
 	Brush.Planes.Add({ FSrcVec3(-1.f, 0.f, 0.f), -Mins.x });
 	Brush.Planes.Add({ FSrcVec3(0.f, 1.f, 0.f), Maxs.y });
@@ -47,12 +44,12 @@ int32 FSourceWorldQuery_Analytic::AddRampAlongX(srcfloat MinX, srcfloat MaxX, sr
 	Brush.Entity = FSrcEntityRef::World();
 	Brush.SurfacePropsId = SurfacePropsId;
 
-	Brush.Planes.Add({SlopeNormal, SlopeDist});  // sloped top
-	Brush.Planes.Add({FSrcVec3(1.f, 0.f, 0.f), MaxX});  // +X cap
-	Brush.Planes.Add({FSrcVec3(-1.f, 0.f, 0.f), -MinX});  // -X cap
-	Brush.Planes.Add({FSrcVec3(0.f, 1.f, 0.f), HalfWidthY});  // +Y cap
-	Brush.Planes.Add({FSrcVec3(0.f, -1.f, 0.f), HalfWidthY});  // -Y cap
-	Brush.Planes.Add({FSrcVec3(0.f, 0.f, -1.f), -BottomZ});  // bottom
+	Brush.Planes.Add({SlopeNormal, SlopeDist});
+	Brush.Planes.Add({FSrcVec3(1.f, 0.f, 0.f), MaxX});
+	Brush.Planes.Add({FSrcVec3(-1.f, 0.f, 0.f), -MinX});
+	Brush.Planes.Add({FSrcVec3(0.f, 1.f, 0.f), HalfWidthY});
+	Brush.Planes.Add({FSrcVec3(0.f, -1.f, 0.f), HalfWidthY});
+	Brush.Planes.Add({FSrcVec3(0.f, 0.f, -1.f), -BottomZ});
 
 	return AddBrush(Brush);
 }
@@ -66,8 +63,6 @@ void FSourceWorldQuery_Analytic::SetSurfaceProperties(int32 SurfacePropsId, srcf
 	Props.bClimbable = bClimbable;
 	SurfacePropsTable.Add(SurfacePropsId, Props);
 }
-
-// Trace
 
 bool FSourceWorldQuery_Analytic::ShouldHitEntity(const FSrcEntityRef& Entity, const FSourceTraceFilter& Filter) const
 {
@@ -135,7 +130,6 @@ void FSourceWorldQuery_Analytic::ClipBoxToBrush(const FBrush& Brush, const FSrcV
 
 		if (d1 > d2)
 		{
-			// Entering the half-space
 			const srcfloat f = (d1 - DistEps) / (d1 - d2);
 			if (f > enterfrac)
 			{
@@ -145,7 +139,6 @@ void FSourceWorldQuery_Analytic::ClipBoxToBrush(const FBrush& Brush, const FSrcV
 		}
 		else
 		{
-			// Leaving the half-space
 			const srcfloat f = (d1 + DistEps) / (d1 - d2);
 			if (f < leavefrac)
 			{
@@ -156,7 +149,6 @@ void FSourceWorldQuery_Analytic::ClipBoxToBrush(const FBrush& Brush, const FSrcV
 
 	if (!startout)
 	{
-		// The start point was inside the brush
 		Out.bStartSolid = true;
 		Out.bDidHit = true;
 		Out.Contents |= Brush.Contents;
@@ -223,7 +215,6 @@ void FSourceWorldQuery_Analytic::TraceHull(const FSrcVec3& Start, const FSrcVec3
 		}
 	}
 
-	// Trace.endpos = start + fraction * (end - start)
 	if (Out.Fraction >= 1.0f)
 	{
 		Out.EndPos = End;
@@ -265,8 +256,6 @@ int32 FSourceWorldQuery_Analytic::GetPointContents(const FSrcVec3& Point, int32 
 
 	return Contents;
 }
-
-// Surface properties
 
 srcfloat FSourceWorldQuery_Analytic::GetSurfaceFriction(int32 SurfacePropsId) const
 {

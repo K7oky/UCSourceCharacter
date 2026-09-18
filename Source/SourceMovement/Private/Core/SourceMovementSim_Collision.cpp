@@ -1,5 +1,3 @@
-// Collision response and ground detection
-
 #include "Core/SourceMovementSim.h"
 
 using namespace SourceMath;
@@ -39,7 +37,6 @@ int32 FSourceMovementSim::ClipVelocity(const FSrcVec3& in, const FSrcVec3& norma
 
 int32 FSourceMovementSim::TryPlayerMove(const FSrcVec3* pFirstDest, const FSourceTraceResult* pFirstTrace)
 {
-	// The core slide solver: up to four bumps, clipping velocity against every plane it hits
 	int32 bumpcount, numbumps;
 	FSrcVec3 dir;
 	srcfloat d = 0.f;
@@ -127,7 +124,7 @@ int32 FSourceMovementSim::TryPlayerMove(const FSrcVec3* pFirstDest, const FSourc
 
 		if (pm.Fraction == 1)
 		{
-			break;  // covered the whole distance
+			break;
 		}
 
 		// Not ported: the touch list that notifies entities the player brushed past
@@ -184,15 +181,14 @@ int32 FSourceMovementSim::TryPlayerMove(const FSrcVec3* pFirstDest, const FSourc
 				{
 					if (j != i)
 					{
-						// Are we now moving against this plane?
 						if (mv->Velocity.Dot(planes[j]) < 0)
 						{
-							break;  // not ok
+							break;
 						}
 					}
 				}
 
-				if (j == numplanes)  // Didn't have to clip, so we're ok
+				if (j == numplanes)
 				{
 					break;
 				}
@@ -226,13 +222,11 @@ int32 FSourceMovementSim::TryPlayerMove(const FSrcVec3* pFirstDest, const FSourc
 		}
 	}
 
-	// No progress across every bump discards the velocity entirely
 	if (allFraction == 0)
 	{
 		VectorCopy(FSrcVec3::Zero, mv->Velocity);
 	}
 
-	// Wall-slam feedback
 	srcfloat fSlamVol = 0.0f;
 	const srcfloat fLateralStoppingAmount = primal_velocity.Length2D() - mv->Velocity.Length2D();
 	if (fLateralStoppingAmount > FSourceMovementParams::PlayerMaxSafeFallSpeed * 2.0f)
@@ -347,13 +341,10 @@ void FSourceMovementSim::StayOnGround()
 	start.z += 2;
 	end.z -= params->StepSize;
 
-	// See how far up we can go without getting stuck
 	TracePlayerBBox(mv->GetAbsOrigin(), start, PlayerSolidMask(), trace);
 	start = trace.EndPos;
 
-	// Then drop from there to one step below, and snap down if the floor is close enough
 	TracePlayerBBox(start, end, PlayerSolidMask(), trace);
-	// Must go somewhere, hit something, not be embedded, and not be too steep
 	if (trace.Fraction > 0.0f && trace.Fraction < 1.0f && !trace.bStartSolid && trace.PlaneNormal[2] >= FSourceMovementParams::StandableGroundNormalZ)
 	{
 		const srcfloat flDelta = FMath::Abs(mv->GetAbsOrigin().z - trace.EndPos.z);
@@ -365,8 +356,6 @@ void FSourceMovementSim::StayOnGround()
 		}
 	}
 }
-
-// Ground detection
 
 bool FSourceMovementSim::CheckValidStandableGroundCandidate(const FSourceTraceResult& pm, srcfloat flStandableZ) const
 {
@@ -534,7 +523,6 @@ void FSourceMovementSim::CategorizePosition()
 
 	CheckWater();
 
-	// Observers have no ground entity
 	if (player->MoveType == ESrcMoveType::Observer)
 	{
 		return;
@@ -588,7 +576,6 @@ void FSourceMovementSim::CategorizePosition()
 			{
 				SetGroundEntity(nullptr);
 
-				// Airborne AND rising -> quarter surface friction
 				if ((mv->Velocity.z > 0.0f) && (player->MoveType != ESrcMoveType::NoClip))
 				{
 					player->m_surfaceFriction = params->AirborneRisingSurfaceFriction;

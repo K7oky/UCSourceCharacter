@@ -29,9 +29,8 @@
 > engine's bugs, reproduced on purpose.
 
 This is not "CS-like movement". It is a line-by-line port of `CGameMovement` and `CCSGameMovement`
-from the Source engine, with the operation order, the single-precision arithmetic, and roughly
-**58 catalogued quirks** preserved verbatim. Where Source has a bug, this has the same bug, tagged
-with its quirk id and covered by a regression test.
+from the Source engine, preserving the operation order, the single-precision arithmetic and the
+original's quirks. Where Source has a bug, this has the same bug, covered by a regression test.
 
 ---
 
@@ -120,7 +119,7 @@ helpers is called.
 > The physics **must** be compiled with precise floating-point semantics (MSVC `/fp:precise`).
 > UnrealBuildTool does not pass `/fp:fast` unless a target asks for it, so the default is already
 > correct — but if anyone enables fast math project-wide, the golden tests will start failing.
-> Do not "fix" those tests; fix the flags. This is documented at the top of `SourceMovement.Build.cs`.
+> The flags are the thing to correct, not the tests. This is noted at the top of `SourceMovement.Build.cs`.
 
 ---
 
@@ -195,8 +194,7 @@ That is the whole setup. `W A S D`, `SPACE`, `CTRL`, `SHIFT` and the mouse work 
 > sample levels look small next to Unreal's starter content.
 >
 > To map Source units to real centimetres instead, change that one constant to `2.54`.
-> It is deliberately the only conversion factor in the project — there are no scattered multipliers
-> to hunt down.
+> It is the only conversion factor in the project.
 
 ### 4. Verify
 
@@ -667,8 +665,8 @@ first thing to rule out when a seam appears to catch.
 Triggers, teleports, start and finish zones, and every other entity are game logic, not geometry.
 glTF carries none of it.
 
-Water is the case worth knowing about: a Source water brush is a volume, but the export keeps only
-its visible top face. Swimming needs that volume back, as a cube with `PM_Water` on it.
+Water is a particular case: a Source water brush is a volume, but the export keeps only its
+visible top face. Swimming requires that volume to be recreated, as a cube carrying `PM_Water`.
 
 ---
 
@@ -739,25 +737,20 @@ Every interesting boundary is a real seam:
 | Add sounds for a surface | Data only. Assign a Physical Material, add an entry to `SurfaceSounds` |
 | Add a test | ~20 lines against `FSourceTestFixture` |
 
-### Inside the simulation — deliberately hard
+### Inside the simulation
 
-`FSourceMovementSim` is ~4000 lines with **zero virtual functions**, no hooks and no policy objects.
-You cannot subclass it to change behaviour, and that is on purpose: every extension point in a
-verbatim port is a place where someone silently diverges from the original and the golden tests stop
-meaning anything.
+`FSourceMovementSim` has no virtual functions, hooks or policy objects, and is not meant to be
+subclassed. An extension point in a verbatim port is a place where behaviour can diverge from the
+original without the golden tests reporting it.
 
-Changing movement means **editing the port**, which means reading the Source original first. Every
-function carries its `file.cpp:line` reference for direct comparison. This is the real cost of the
-design, and it buys a simulation that can be checked against CS:GO.
+Changing movement means editing the port against the Source original. The ported functions keep
+their original names, so the corresponding code is easy to locate in the Kisak-Strike tree.
 
-For per-game movement tweaks, the intended route is a **new console variable** feeding
-`FSourceMovementParams`, not a subclass.
+Per-game tweaks are expected to go through a console variable feeding `FSourceMovementParams`.
 
 ---
 
 ## Known gaps
-
-Stated plainly so nobody discovers these the hard way.
 
 | Gap | Status |
 |---|---|
@@ -777,11 +770,11 @@ code and in the spec rather than guessed at.
 
 ## Documentation
 
-`Docs/SOURCE_MOVEMENT_SPEC.md` is the authoritative specification: the Source function map, the
-state machines, the pipeline order, all 58 quirks, every constant with its origin, the architecture
-rationale and the phase plan. It is written in Russian.
+`Docs/SOURCE_MOVEMENT_SPEC.md` is the working specification for the port: the Source function map,
+the state machines, the pipeline order and the origin of each constant. It is written in Russian.
 
-When the code and the spec disagree, the **Source original wins**, and both get corrected.
+Where the code and the specification disagree, the Source original is the reference and both are
+corrected against it.
 
 ---
 

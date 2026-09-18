@@ -395,8 +395,6 @@ void FSourceBindManager::ApplyDefaultBinds(FOutputDevice& Ar)
 	Bind(TEXT("TAB"), TEXT("+showscores"), Ar);
 }
 
-// Config files
-
 FString FSourceBindManager::GetConfigPath(const FString& FileName)
 {
 	FString Name = FileName.TrimStartAndEnd().TrimQuotes();
@@ -561,8 +559,6 @@ void FSourceBindManager::ExecStartupConfigs()
 
 	ExecConfig(TEXT("autoexec.cfg"), *GLog);
 }
-
-// Console commands
 
 namespace
 {

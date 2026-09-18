@@ -228,6 +228,8 @@ void USourceMovementComponent::DrawDebug(float DeltaTime)
 			const int32 WaterIndex = FMath::Clamp(static_cast<int32>(State.WaterLevel), 0, 3);
 
 			GEngine->AddOnScreenDebugMessage(BaseKey + 6, 0.f, State.WaterLevel > ESrcWaterLevel::NotInWater ? FColor::Blue : FColor::Silver, FString::Printf(TEXT("[Source] water %s   type %s   waterJump %6.1f   surfaceProps %d"), WaterLevelNames[WaterIndex], State.WaterType & SRC_CONTENTS_SLIME ? TEXT("slime") : State.WaterType & SRC_CONTENTS_WATER ? TEXT("water") : TEXT("none"), State.m_flWaterJumpTime, State.m_surfaceProps));
+
+			GEngine->AddOnScreenDebugMessage(BaseKey + 7, 0.f, FColor::Magenta, FString::Printf(TEXT("[Source] backend %s"), WorldQueryMode == ESourceWorldQueryMode::UnrealGeometry ? TEXT("Chaos sweeps") : TEXT("analytic flat ground")));
 		}
 	}
 

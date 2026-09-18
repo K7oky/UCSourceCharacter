@@ -1,5 +1,3 @@
-// Port of CGameMovement / CCSGameMovement: command pipeline, parameters, gravity, falling
-
 #include "Core/SourceMovementSim.h"
 
 #include "SourceMovementModule.h"
@@ -739,8 +737,6 @@ void FSourceMovementSim::FullWalkMove()
 
 	// Not ported: the water-transition splash, which is audio only
 }
-
-// Gravity
 
 void FSourceMovementSim::StartGravity()
 {
